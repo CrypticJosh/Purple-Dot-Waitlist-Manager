@@ -1,85 +1,464 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Purple Dot • Waitlist Manager</title>
-  <link rel="stylesheet" href="style.css">
-</head>
-<body>
-  <div class="orb orb-one"></div><div class="orb orb-two"></div>
 
-  <main class="shell">
-    <header class="topbar">
-      <div class="brand">
-        <div class="brand-mark">PD</div>
-        <div><strong>Purple Dot</strong><span>Waitlist Manager</span></div>
-      </div>
-      <div class="secure-pill"><span>●</span> GitHub-secured</div>
+<head>
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
+    <title>Purple Dot Waitlist Manager</title>
+
+    <link
+        rel="stylesheet"
+        href="styles.css"
+    >
+</head>
+
+<body>
+
+<div class="app">
+
+    <header class="header">
+
+        <div class="brand">
+
+            <div class="brand-icon">
+                PD
+            </div>
+
+            <div>
+                <h1>
+                    Purple Dot
+                    <span>Waitlist Manager</span>
+                </h1>
+
+                <p>
+                    Bulk review and update waitlist due dates
+                </p>
+            </div>
+
+        </div>
+
     </header>
 
-    <section class="hero">
-      <div>
-        <div class="eyebrow">BULK WAITLIST EDITOR</div>
-        <h1>Update ship dates<br><em>without the repetitive work.</em></h1>
-        <p>Paste your SKUs, review the current Purple Dot dates, choose the new dates, and update the whole batch in one go.</p>
-      </div>
-      <div class="hero-card">
-        <div class="hero-number">01</div>
-        <div><strong>Review first</strong><span>Nothing is changed until you confirm the batch.</span></div>
-      </div>
-    </section>
 
-    <section class="card setup">
-      <div class="section-title"><span class="step">01</span><div><h2>GitHub connection</h2><p>Used to securely run the updater.</p></div></div>
-      <div class="fields three">
-        <label>GitHub owner<input id="repoOwner" placeholder="your-username"></label>
-        <label>Repository<input id="repoName" placeholder="purple-dot-waitlist-updater"></label>
-        <label>Branch<input id="branch" value="main"></label>
-      </div>
-      <label>GitHub token<input id="githubToken" type="password" autocomplete="off" placeholder="github_pat_••••••••"></label>
-      <div class="hint">Use a fine-grained token restricted to this repository with <b>Actions: Read and write</b>. It is used by this page only to trigger/read the GitHub workflow.</div>
-    </section>
+    <main>
 
-    <section class="card">
-      <div class="section-title"><span class="step">02</span><div><h2>Choose waitlists</h2><p>Paste one SKU per line, or use commas, tabs or semicolons.</p></div></div>
-      <textarea id="skus" rows="8" placeholder="HOR-R1234
-HOR-R5678
-DAP-12345
-OXD-76TR016"></textarea>
-      <div class="toolbar">
-        <span id="skuCount">0 SKUs</span>
-        <button id="find" class="primary">Find waitlists <span>→</span></button>
-      </div>
-    </section>
 
-    <section id="reviewCard" class="card hidden">
-      <div class="section-title"><span class="step">03</span><div><h2>Review current dates</h2><p>Check exactly what Purple Dot found before making changes.</p></div></div>
-      <div id="lookupState" class="loading"><span class="spinner"></span> Finding waitlists…</div>
-      <div id="reviewTable"></div>
-    </section>
+        <!-- SETTINGS -->
 
-    <section id="datesCard" class="card hidden">
-      <div class="section-title"><span class="step">04</span><div><h2>Set new dates</h2><p>These dates will be applied to every selected waitlist.</p></div></div>
-      <div class="fields two">
-        <label>Earliest ship date<input id="earliest" type="date"></label>
-        <label>Latest ship date<input id="latest" type="date"></label>
-      </div>
-      <div class="date-preview">
-        <div><span>New earliest</span><strong id="earliestPreview">—</strong></div>
-        <div class="arrow">→</div>
-        <div><span>New latest</span><strong id="latestPreview">—</strong></div>
-      </div>
-      <div class="warning"><b>Final check</b><span>Only matched waitlists will be updated. Not found and ambiguous SKUs will be skipped.</span></div>
-      <button id="update" class="primary big" disabled>Update selected waitlists <span>→</span></button>
-      <div id="status" class="status"></div>
-    </section>
+        <section class="card">
+
+            <div class="card-heading">
+
+                <div>
+
+                    <h2>
+                        GitHub connection
+                    </h2>
+
+                    <p>
+                        Used to run the Purple Dot lookup and update workflows.
+                    </p>
+
+                </div>
+
+            </div>
+
+
+            <div class="form-grid">
+
+                <label>
+
+                    <span>
+                        GitHub owner
+                    </span>
+
+                    <input
+                        id="repoOwner"
+                        type="text"
+                        placeholder="your-github-username"
+                    >
+
+                </label>
+
+
+                <label>
+
+                    <span>
+                        Repository
+                    </span>
+
+                    <input
+                        id="repoName"
+                        type="text"
+                        placeholder="purple-dot-waitlist"
+                    >
+
+                </label>
+
+
+                <label>
+
+                    <span>
+                        Branch
+                    </span>
+
+                    <input
+                        id="branch"
+                        type="text"
+                        value="main"
+                    >
+
+                </label>
+
+
+                <label>
+
+                    <span>
+                        GitHub token
+                    </span>
+
+                    <input
+                        id="githubToken"
+                        type="password"
+                        placeholder="github_pat_..."
+                        autocomplete="off"
+                    >
+
+                </label>
+
+            </div>
+
+
+            <div class="security-note">
+
+                <strong>
+                    🔒 Token security
+                </strong>
+
+                <span>
+                    Your token is only kept in this browser session
+                    and is sent directly to GitHub.
+                </span>
+
+            </div>
+
+        </section>
+
+
+
+        <!-- SKU INPUT -->
+
+        <section class="card">
+
+            <div class="card-heading">
+
+                <div>
+
+                    <h2>
+                        Find waitlists
+                    </h2>
+
+                    <p>
+                        Enter one or more SKUs. One SKU per line is easiest.
+                    </p>
+
+                </div>
+
+                <span
+                    id="skuCount"
+                    class="counter">
+                    0 SKUs
+                </span>
+
+            </div>
+
+
+            <textarea
+                id="skus"
+                class="sku-input"
+                rows="8"
+                placeholder="HOR-R30524
+AIR-A06107A
+HOR-R12345"
+            ></textarea>
+
+
+            <div class="actions">
+
+                <button
+                    id="find"
+                    type="button"
+                    class="button primary">
+
+                    <span>
+                        🔎
+                    </span>
+
+                    Find waitlists
+
+                </button>
+
+            </div>
+
+        </section>
+
+
+
+        <!-- REVIEW -->
+
+        <section
+            id="reviewCard"
+            class="card hidden">
+
+            <div class="card-heading">
+
+                <div>
+
+                    <h2>
+                        Review current dates
+                    </h2>
+
+                    <p>
+                        Every matching waitlist is shown separately.
+                        Select exactly the ones you want to change.
+                    </p>
+
+                </div>
+
+                <div
+                    id="lookupState"
+                    class="lookup-state">
+                </div>
+
+            </div>
+
+
+            <div class="selection-toolbar">
+
+                <div
+                    id="selectionCount"
+                    class="selection-count">
+
+                    0 selected
+
+                </div>
+
+
+                <div class="toolbar-actions">
+
+                    <button
+                        id="selectAll"
+                        type="button"
+                        class="button secondary">
+
+                        Select all
+
+                    </button>
+
+
+                    <button
+                        id="clearAll"
+                        type="button"
+                        class="button secondary">
+
+                        Clear all
+
+                    </button>
+
+                </div>
+
+            </div>
+
+
+            <div
+                id="reviewTable"
+                class="waitlist-list">
+            </div>
+
+        </section>
+
+
+
+        <!-- DATE UPDATE -->
+
+        <section
+            id="datesCard"
+            class="card hidden">
+
+            <div class="card-heading">
+
+                <div>
+
+                    <h2>
+                        New due dates
+                    </h2>
+
+                    <p>
+                        These dates will be applied to every selected waitlist.
+                    </p>
+
+                </div>
+
+            </div>
+
+
+            <div class="form-grid date-grid">
+
+                <label>
+
+                    <span>
+                        Earliest ship date
+                    </span>
+
+                    <input
+                        id="earliest"
+                        type="date"
+                    >
+
+                </label>
+
+
+                <label>
+
+                    <span>
+                        Latest ship date
+                    </span>
+
+                    <input
+                        id="latest"
+                        type="date"
+                    >
+
+                </label>
+
+            </div>
+
+
+            <div class="date-preview">
+
+                <div>
+
+                    <small>
+                        New earliest
+                    </small>
+
+                    <strong
+                        id="earliestPreview">
+                        —
+                    </strong>
+
+                </div>
+
+
+                <div>
+
+                    <small>
+                        New latest
+                    </small>
+
+                    <strong
+                        id="latestPreview">
+                        —
+                    </strong>
+
+                </div>
+
+            </div>
+
+
+
+            <!-- REASON -->
+
+            <div class="reason-section">
+
+                <h2>
+                    Reason for change
+                </h2>
+
+                <p>
+                    Purple Dot asks for a reason when a due date is changed.
+                </p>
+
+
+                <textarea
+                    id="changeReason"
+                    rows="4"
+                    placeholder="For example: Supplier delivery date changed."
+                ></textarea>
+
+
+                <label class="email-option">
+
+                    <input
+                        id="includeEmail"
+                        type="checkbox"
+                    >
+
+                    <span>
+
+                        <strong>
+                            Include reason in customer email
+                        </strong>
+
+                        <small>
+                            If enabled, the reason will be included
+                            in the email sent to affected customers.
+                        </small>
+
+                    </span>
+
+                </label>
+
+            </div>
+
+
+
+            <!-- STATUS -->
+
+            <div
+                id="status"
+                class="status">
+            </div>
+
+
+            <div class="update-actions">
+
+                <button
+                    id="update"
+                    type="button"
+                    class="button primary large"
+                    disabled>
+
+                    Update selected waitlists
+
+                </button>
+
+            </div>
+
+        </section>
+
+    </main>
+
 
     <footer>
-      <span>Purple Dot API runs inside GitHub Actions.</span>
-      <a href="https://docs.getpurpledot.com/docs/purple-dot-apis/private-api/waitlists" target="_blank" rel="noreferrer">API documentation ↗</a>
+
+        Purple Dot Waitlist Manager
+
     </footer>
-  </main>
-  <script src="app.js"></script>
+
+</div>
+
+
+<script
+    src="app.js"
+    defer>
+</script>
+
 </body>
+
 </html>

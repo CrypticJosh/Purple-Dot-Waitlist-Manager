@@ -1,4 +1,4 @@
-name: Purple Dot Waitlist Lookup
+name: Purple Dot Lookup
 
 on:
   workflow_dispatch:
@@ -8,31 +8,35 @@ on:
         required: true
         type: string
 
-permissions:
-  contents: read
-
 jobs:
+
   lookup:
+
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+
+    permissions:
+      contents: read
 
     steps:
+
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
       - name: Setup Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version: 22
 
-      - name: Lookup Purple Dot waitlists
+      - name: Run Purple Dot lookup
         env:
           PURPLE_DOT_ACCESS_TOKEN: ${{ secrets.PURPLE_DOT_ACCESS_TOKEN }}
           SKUS: ${{ inputs.skus }}
-        run: node scripts/lookup-waitlists.mjs
+        run: |
+          node scripts/lookup-waitlists.mjs
 
       - name: Upload lookup result
         uses: actions/upload-artifact@v4
         with:
           name: purple-dot-lookup-result
           path: lookup-result.json
+          retention-days: 1

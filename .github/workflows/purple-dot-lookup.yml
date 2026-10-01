@@ -1,4 +1,5 @@
 name: Purple Dot Waitlist Lookup
+
 on:
   workflow_dispatch:
     inputs:
@@ -6,21 +7,30 @@ on:
         description: "SKUs to find"
         required: true
         type: string
+
 permissions:
   contents: read
+
 jobs:
   lookup:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
-        with: {node-version: "22"}
-      - name: Lookup
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+
+      - name: Lookup Purple Dot waitlists
         env:
           PURPLE_DOT_ACCESS_TOKEN: ${{ secrets.PURPLE_DOT_ACCESS_TOKEN }}
           SKUS: ${{ inputs.skus }}
         run: node scripts/lookup-waitlists.mjs
-      - name: Upload result
+
+      - name: Upload lookup result
         uses: actions/upload-artifact@v4
         with:
           name: purple-dot-lookup-result

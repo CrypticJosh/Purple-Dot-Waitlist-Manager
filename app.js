@@ -36,19 +36,75 @@ $("find").addEventListener("click",async()=>{
   }catch(e){$("lookupState").textContent=e.message;status(e.message,"bad")}
 });
 
-async function waitForRun(){
-  let tries=0;
-  const tick=async()=>{
+async function waitForRun() {
+
+  let tries = 0;
+
+  const MAX_TRIES = 100;
+
+  const tick = async () => {
+
     tries++;
-    const branch=$("branch").value.trim()||"main";
-    const data=await gh(`/actions/runs?event=workflow_dispatch&branch=${encodeURIComponent(branch)}&per_page=10`);
-    const runs=data.workflow_runs||[];
-    const candidate=runs.find(r=>r.name==="Purple Dot Waitlist Lookup"&&(r.status==="queued"||r.status==="in_progress"||r.status==="completed"));
-    if(!candidate){if(tries<30)return pollTimer=setTimeout(tick,1500);throw new Error("Could not find the lookup workflow run.");}
-    runId=candidate.id;
-    if(candidate.status!=="completed"){ $("lookupState").innerHTML=`<span class="spinner"></span> Purple Dot lookup running…`; return pollTimer=setTimeout(tick,1500);}
+
+    if (tries > MAX_TRIES) {
+      throw new Error(
+        "The Purple Dot lookup took too long. " +
+        "Check GitHub Actions to see whether the workflow is still running."
+      );
+    }
+
+    const branch =
+      $("branch").value.trim() || "main";
+
+    const data = await gh(
+      `/actions/runs?event=workflow_dispatch&branch=${encodeURIComponent(branch)}&per_page=10`
+    );
+
+    const runs = data.workflow_runs || [];
+
+    const candidate = runs.find(
+      r =>
+        r.name === "Purple Dot Waitlist Lookup" &&
+        (
+          r.status === "queued" ||
+          r.status === "in_progress" ||
+          r.status === "completed"
+        )
+    );
+
+    if (!candidate) {
+
+      if (tries < MAX_TRIES) {
+        $("lookupState").innerHTML =
+          '<span class="spinner"></span> Waiting for GitHub Actions…';
+
+        pollTimer = setTimeout(tick, 2000);
+        return;
+      }
+
+      throw new Error(
+        "Could not find the Purple Dot lookup workflow run."
+      );
+    }
+
+    runId = candidate.id;
+
+    if (candidate.status !== "completed") {
+
+      $("lookupState").innerHTML =
+        `<span class="spinner"></span> ` +
+        `Purple Dot lookup running… (${tries}/100)`;
+
+      pollTimer = setTimeout(tick, 2000);
+
+      return;
+    }
+
     await readArtifact();
   };
+
+  await tick();
+}
   tick();
 }
 

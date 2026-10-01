@@ -1,157 +1,708 @@
-const $=id=>document.getElementById(id);
-let requested=[];
-let lookup=null;
-let runId=null;
-let pollTimer=null;
+const $ = id => document.getElementById(id);
 
-function skus(){return [...new Set($("skus").value.split(/[\n,\t,;]+/).map(x=>x.trim()).filter(Boolean))]}
-function fmtDate(v){if(!v)return "—";const d=new Date(v);if(Number.isNaN(d.getTime()))return v;return d.toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"})}
-function status(msg,cls=""){$("status").className="status "+cls;$("status").textContent=msg}
-function dateValid(){return $("earliest").value&&$("latest").value&&$("latest").value>=$("earliest").value}
-function payload(){return JSON.stringify({skus:requested,earliest_ship_date:$("earliest").value,latest_ship_date:$("latest").value})}
+let requested = [];
+let lookup = null;
+let runId = null;
+let pollTimer = null;
 
-$("skus").addEventListener("input",()=>{$("skuCount").textContent=`${skus().length} SKU${skus().length===1?"":"s"}`});
-$("earliest").addEventListener("change",()=>{$("earliestPreview").textContent=fmtDate($("earliest").value);$("update").disabled=!dateValid()||!lookup?.matched?.length});
-$("latest").addEventListener("change",()=>{$("latestPreview").textContent=fmtDate($("latest").value);$("update").disabled=!dateValid()||!lookup?.matched?.length});
-
-async function gh(path,opts={}){
-  const owner=$("repoOwner").value.trim(),repo=$("repoName").value.trim(),token=$("githubToken").value.trim();
-  if(!owner||!repo||!token)throw new Error("Enter your GitHub owner, repository and token first.");
-  const r=await fetch("https://api.github.com/repos/"+encodeURIComponent(owner)+"/"+encodeURIComponent(repo)+path,{...opts,headers:{"Accept":"application/vnd.github+json","Authorization":"Bearer "+token,"X-GitHub-Api-Version":"2026-03-10",...(opts.headers||{})}});
-  if(!r.ok)throw new Error(`GitHub ${r.status}: ${await r.text()}`);
-  return r.status===204?null:r.json();
+function getSkus() {
+  return [
+    ...new Set(
+      $("skus").value
+        .split(/[\n,\t;]+/)
+        .map(x => x.trim())
+        .filter(Boolean)
+    )
+  ];
 }
 
-$("find").addEventListener("click",async()=>{
-  requested=skus();
-  if(!requested.length){status("Enter at least one SKU.","bad");return}
-  $("reviewCard").classList.remove("hidden");$("datesCard").classList.add("hidden");
-  $("lookupState").className="loading";$("lookupState").innerHTML='<span class="spinner"></span> Finding waitlists…';
-  $("reviewTable").innerHTML="";
-  try{
-    const branch=$("branch").value.trim()||"main";
-    const data=await gh("/actions/workflows/purple-dot-lookup.yml/dispatches",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({ref:branch,inputs:{skus:requested.join("\n")}})});
-    // Dispatch is normally 204. Find the newest run after a short delay.
-    await waitForRun();
-  }catch(e){$("lookupState").textContent=e.message;status(e.message,"bad")}
+function formatDate(value) {
+  if (!value) return "—";
+
+  const d = new Date(value);
+
+  if (Number.isNaN(d.getTime())) {
+    return value;
+  }
+
+  return d.toLocaleDateString("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric"
+  });
+}
+
+function escapeHtml(value) {
+  return String(value ?? "").replace(/[&<>"']/g, char => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#039;"
+  }[char]));
+}
+
+function setStatus(message, type = "") {
+  $("status").className = `status ${type}`;
+  $("status").textContent = message;
+}
+
+function datesValid() {
+  const earliest = $("earliest").value;
+  const latest = $("latest").value;
+
+  return (
+    earliest &&
+    latest &&
+    latest >= earliest
+  );
+}
+
+function updateDatePreview() {
+  $("earliestPreview").textContent =
+    formatDate($("earliest").value);
+
+  $("latestPreview").textContent =
+    formatDate($("latest").value);
+
+  if ($("update")) {
+    $("update").disabled =
+      !datesValid() ||
+      !lookup ||
+      !lookup.matched ||
+      lookup.matched.length === 0;
+  }
+}
+
+$("skus").addEventListener("input", () => {
+  const list = getSkus();
+
+  $("skuCount").textContent =
+    `${list.length} SKU${list.length === 1 ? "" : "s"}`;
 });
 
-async function waitForRun() {
+$("earliest").addEventListener(
+  "change",
+  updateDatePreview
+);
 
-  let tries = 0;
+$("latest").addEventListener(
+  "change",
+  updateDatePreview
+);
 
-  const MAX_TRIES = 100;
 
-  const tick = async () => {
+/*
+ * GitHub API helper
+ */
 
-    tries++;
+async function githubRequest(path, options = {}) {
 
-    if (tries > MAX_TRIES) {
-      throw new Error(
-        "The Purple Dot lookup took too long. " +
-        "Check GitHub Actions to see whether the workflow is still running."
-      );
+  const owner =
+    $("repoOwner").value.trim();
+
+  const repo =
+    $("repoName").value.trim();
+
+  const token =
+    $("githubToken").value.trim();
+
+  if (!owner) {
+    throw new Error("Enter your GitHub owner.");
+  }
+
+  if (!repo) {
+    throw new Error("Enter your GitHub repository.");
+  }
+
+  if (!token) {
+    throw new Error("Enter your GitHub fine-grained token.");
+  }
+
+  const response = await fetch(
+    `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}${path}`,
+    {
+      ...options,
+
+      headers: {
+        "Accept":
+          "application/vnd.github+json",
+
+        "Authorization":
+          `Bearer ${token}`,
+
+        "X-GitHub-Api-Version":
+          "2026-03-10",
+
+        ...(options.headers || {})
+      }
     }
+  );
 
-    const branch =
-      $("branch").value.trim() || "main";
+  const text =
+    await response.text();
 
-    const data = await gh(
-      `/actions/runs?event=workflow_dispatch&branch=${encodeURIComponent(branch)}&per_page=10`
-    );
+  if (!response.ok) {
 
-    const runs = data.workflow_runs || [];
+    let message = text;
 
-    const candidate = runs.find(
-      r =>
-        r.name === "Purple Dot Waitlist Lookup" &&
-        (
-          r.status === "queued" ||
-          r.status === "in_progress" ||
-          r.status === "completed"
-        )
-    );
+    try {
+      const json = JSON.parse(text);
 
-    if (!candidate) {
-
-      if (tries < MAX_TRIES) {
-        $("lookupState").innerHTML =
-          '<span class="spinner"></span> Waiting for GitHub Actions…';
-
-        pollTimer = setTimeout(tick, 2000);
-        return;
+      if (json.message) {
+        message = json.message;
       }
 
-      throw new Error(
-        "Could not find the Purple Dot lookup workflow run."
+    } catch {}
+
+    throw new Error(
+      `GitHub ${response.status}: ${message}`
+    );
+  }
+
+  if (!text) {
+    return null;
+  }
+
+  return JSON.parse(text);
+}
+
+
+/*
+ * Find Waitlists
+ */
+
+$("find").addEventListener(
+  "click",
+  async () => {
+
+    requested = getSkus();
+
+    if (!requested.length) {
+
+      setStatus(
+        "Enter at least one SKU.",
+        "bad"
       );
-    }
-
-    runId = candidate.id;
-
-    if (candidate.status !== "completed") {
-
-      $("lookupState").innerHTML =
-        `<span class="spinner"></span> ` +
-        `Purple Dot lookup running… (${tries}/100)`;
-
-      pollTimer = setTimeout(tick, 2000);
 
       return;
     }
 
-    await readArtifact();
-  };
+    $("reviewCard")
+      .classList
+      .remove("hidden");
 
-  await tick();
-}
-  tick();
-}
+    $("datesCard")
+      .classList
+      .add("hidden");
 
-async function readArtifact(){
-  const data=await gh(`/actions/runs/${runId}/artifacts`);
-  const art=(data.artifacts||[]).find(a=>a.name==="purple-dot-lookup-result");
-  if(!art)throw new Error("Lookup finished but no result artifact was found.");
-  const blob=await fetch(art.archive_download_url,{headers:{"Accept":"application/vnd.github+json","Authorization":"Bearer "+$("githubToken").value.trim(),"X-GitHub-Api-Version":"2026-03-10"}}).then(r=>{if(!r.ok)throw new Error("Could not download the lookup result.");return r.blob()});
-  const zip=await blob.arrayBuffer();
-  const bytes=new Uint8Array(zip);
-  // Browser-side ZIP parsing without a library is intentionally avoided. The workflow also writes results to the run summary.
-  // Instead, ask GitHub for the job logs, which include a compact RESULT_JSON line.
-  const jobs=await gh(`/actions/runs/${runId}/jobs?per_page=20`);
-  const job=(jobs.jobs||[])[0];
-  if(!job)throw new Error("Lookup job not found.");
-  const logRes=await fetch(`https://api.github.com/repos/${encodeURIComponent($("repoOwner").value.trim())}/${encodeURIComponent($("repoName").value.trim())}/actions/jobs/${job.id}/logs`,{headers:{"Accept":"application/vnd.github+json","Authorization":"Bearer "+$("githubToken").value.trim(),"X-GitHub-Api-Version":"2026-03-10"}});
-  const text=await logRes.text();
-  const marker="RESULT_JSON=";
-  const pos=text.lastIndexOf(marker);
-  if(pos<0)throw new Error("Lookup completed but its result could not be read.");
-  const line=text.slice(pos+marker.length).split("\n")[0].trim();
-  lookup=JSON.parse(line);
-  renderLookup();
-}
+    $("lookupState").className =
+      "loading";
 
-function renderLookup(){
-  const rows=lookup.results||[];
-  $("lookupState").textContent=`${lookup.matched_count} matched · ${lookup.not_found_count} not found · ${lookup.ambiguous_count} ambiguous`;
-  let html=`<div class="table-wrap"><table><thead><tr><th>SKU</th><th>Current earliest</th><th>Current latest</th><th>State</th><th>Result</th></tr></thead><tbody>`;
-  for(const r of rows){
-    const cls=r.status==="MATCHED"?"":r.status==="NOT_FOUND"?"bad":"warn";
-    html+=`<tr><td class="sku">${esc(r.sku)}</td><td class="date-old">${fmtDate(r.earliest_ship_date)}</td><td class="date-old">${fmtDate(r.latest_ship_date)}</td><td>${r.state?`<span class="state">${esc(r.state)}</span>`:"—"}</td><td><span class="state ${cls}">${r.status==="MATCHED"?"Ready":r.status==="NOT_FOUND"?"Not found":"Ambiguous"}</span></td></tr>`;
+    $("lookupState").innerHTML =
+      '<span class="spinner"></span> Starting Purple Dot lookup…';
+
+    $("reviewTable").innerHTML = "";
+
+    try {
+
+      const branch =
+        $("branch").value.trim() ||
+        "main";
+
+      /*
+       * First check that the workflow actually exists.
+       */
+
+      const workflow =
+        await githubRequest(
+          "/actions/workflows/purple-dot-lookup.yml"
+        );
+
+      if (!workflow) {
+        throw new Error(
+          "Purple Dot lookup workflow was not found."
+        );
+      }
+
+      /*
+       * Trigger workflow.
+       */
+
+      await githubRequest(
+        "/actions/workflows/purple-dot-lookup.yml/dispatches",
+        {
+          method: "POST",
+
+          headers: {
+            "Content-Type":
+              "application/json"
+          },
+
+          body: JSON.stringify({
+            ref: branch,
+
+            inputs: {
+              skus:
+                requested.join("\n")
+            }
+          })
+        }
+      );
+
+      $("lookupState").innerHTML =
+        '<span class="spinner"></span> Purple Dot lookup started…';
+
+      /*
+       * Give GitHub a moment to register
+       * the workflow before searching for it.
+       */
+
+      setTimeout(
+        findLatestLookupRun,
+        2000
+      );
+
+    } catch (error) {
+
+      $("lookupState").textContent =
+        error.message;
+
+      setStatus(
+        error.message,
+        "bad"
+      );
+    }
   }
-  html+="</tbody></table></div>";
-  $("reviewTable").innerHTML=html;
-  $("datesCard").classList.remove("hidden");
-  $("update").disabled=!dateValid()||lookup.matched_count===0;
+);
+
+
+/*
+ * Find the workflow run
+ */
+
+async function findLatestLookupRun() {
+
+  try {
+
+    const branch =
+      $("branch").value.trim() ||
+      "main";
+
+    const data =
+      await githubRequest(
+        `/actions/runs?event=workflow_dispatch&branch=${encodeURIComponent(branch)}&per_page=20`
+      );
+
+    const runs =
+      data.workflow_runs || [];
+
+    /*
+     * Only look for the lookup workflow.
+     */
+
+    const lookupRuns =
+      runs.filter(
+        run =>
+          run.path ===
+            ".github/workflows/purple-dot-lookup.yml"
+      );
+
+    if (!lookupRuns.length) {
+
+      $("lookupState").innerHTML =
+        '<span class="spinner"></span> Waiting for GitHub to start the lookup…';
+
+      pollTimer =
+        setTimeout(
+          findLatestLookupRun,
+          2000
+        );
+
+      return;
+    }
+
+    /*
+     * Most recent run.
+     */
+
+    const run =
+      lookupRuns[0];
+
+    runId = run.id;
+
+    if (
+      run.status ===
+        "queued" ||
+      run.status ===
+        "in_progress"
+    ) {
+
+      $("lookupState").innerHTML =
+        `<span class="spinner"></span> Purple Dot lookup running…`;
+
+      pollTimer =
+        setTimeout(
+          findLatestLookupRun,
+          2000
+        );
+
+      return;
+    }
+
+    if (
+      run.status ===
+      "completed"
+    ) {
+
+      if (
+        run.conclusion !==
+        "success"
+      ) {
+
+        throw new Error(
+          `Purple Dot lookup failed. GitHub conclusion: ${run.conclusion}`
+        );
+      }
+
+      await readLookupResult();
+
+      return;
+    }
+
+  } catch (error) {
+
+    $("lookupState").textContent =
+      error.message;
+
+    setStatus(
+      error.message,
+      "bad"
+    );
+  }
 }
 
-$("update").addEventListener("click",async()=>{
-  if(!dateValid()||!lookup?.matched?.length)return;
-  if(!confirm(`Update ${lookup.matched.length} matched waitlists?\n\n${fmtDate($("earliest").value)} → ${fmtDate($("latest").value)}`))return;
-  $("update").disabled=true;status("Starting the Purple Dot update…");
-  try{
-    const branch=$("branch").value.trim()||"main";
-    await gh("/actions/workflows/purple-dot-update.yml/dispatches",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({ref:branch,inputs:{payload:payload()}})});
-    status("Update workflow started.\n\nPurple Dot is now being updated. You can open the Actions tab to see the run.","ok");
-  }catch(e){status(e.message,"bad");$("update").disabled=false}
-});
-function esc(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c]))}
+
+/*
+ * Read lookup result
+ */
+
+async function readLookupResult() {
+
+  try {
+
+    $("lookupState").innerHTML =
+      '<span class="spinner"></span> Loading lookup results…';
+
+    const artifacts =
+      await githubRequest(
+        `/actions/runs/${runId}/artifacts`
+      );
+
+    const artifact =
+      (artifacts.artifacts || [])
+        .find(
+          item =>
+            item.name ===
+            "purple-dot-lookup-result"
+        );
+
+    if (!artifact) {
+
+      throw new Error(
+        "The lookup finished but no result file was produced."
+      );
+    }
+
+    /*
+     * Get the jobs for the run.
+     */
+
+    const jobs =
+      await githubRequest(
+        `/actions/runs/${runId}/jobs?per_page=20`
+      );
+
+    const job =
+      (jobs.jobs || [])[0];
+
+    if (!job) {
+
+      throw new Error(
+        "The lookup job could not be found."
+      );
+    }
+
+    /*
+     * Read the job log.
+     */
+
+    const owner =
+      $("repoOwner").value.trim();
+
+    const repo =
+      $("repoName").value.trim();
+
+    const token =
+      $("githubToken").value.trim();
+
+    const response =
+      await fetch(
+        `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/actions/jobs/${job.id}/logs`,
+        {
+          headers: {
+            "Accept":
+              "application/vnd.github+json",
+
+            "Authorization":
+              `Bearer ${token}`,
+
+            "X-GitHub-Api-Version":
+              "2026-03-10"
+          }
+        }
+      );
+
+    if (!response.ok) {
+
+      throw new Error(
+        `Could not read lookup logs (${response.status}).`
+      );
+    }
+
+    const logs =
+      await response.text();
+
+    const marker =
+      "RESULT_JSON=";
+
+    const position =
+      logs.lastIndexOf(marker);
+
+    if (position === -1) {
+
+      throw new Error(
+        "The lookup completed, but no result data was found."
+      );
+    }
+
+    let jsonText =
+      logs
+        .slice(position + marker.length)
+        .split(/\r?\n/)[0]
+        .trim();
+
+    lookup =
+      JSON.parse(jsonText);
+
+    renderLookup();
+
+  } catch (error) {
+
+    $("lookupState").textContent =
+      error.message;
+
+    setStatus(
+      error.message,
+      "bad"
+    );
+  }
+}
+
+
+/*
+ * Display results
+ */
+
+function renderLookup() {
+
+  const rows =
+    lookup.results || [];
+
+  $("lookupState").textContent =
+    `${lookup.matched_count} matched · ` +
+    `${lookup.not_found_count} not found · ` +
+    `${lookup.ambiguous_count} ambiguous`;
+
+  let html = `
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>SKU</th>
+            <th>Current earliest</th>
+            <th>Current latest</th>
+            <th>State</th>
+            <th>Result</th>
+          </tr>
+        </thead>
+        <tbody>
+  `;
+
+  for (const row of rows) {
+
+    let resultClass = "";
+
+    let resultText = "Ready";
+
+    if (
+      row.status ===
+      "NOT_FOUND"
+    ) {
+
+      resultClass = "bad";
+      resultText = "Not found";
+
+    } else if (
+      row.status ===
+      "AMBIGUOUS"
+    ) {
+
+      resultClass = "warn";
+      resultText = "Ambiguous";
+    }
+
+    html += `
+      <tr>
+
+        <td class="sku">
+          ${escapeHtml(row.sku)}
+        </td>
+
+        <td class="date-old">
+          ${formatDate(row.earliest_ship_date)}
+        </td>
+
+        <td class="date-old">
+          ${formatDate(row.latest_ship_date)}
+        </td>
+
+        <td>
+          ${
+            row.state
+              ? `<span class="state">
+                  ${escapeHtml(row.state)}
+                </span>`
+              : "—"
+          }
+        </td>
+
+        <td>
+          <span class="state ${resultClass}">
+            ${resultText}
+          </span>
+        </td>
+
+      </tr>
+    `;
+  }
+
+  html += `
+        </tbody>
+      </table>
+    </div>
+  `;
+
+  $("reviewTable").innerHTML =
+    html;
+
+  $("datesCard")
+    .classList
+    .remove("hidden");
+
+  updateDatePreview();
+}
+
+
+/*
+ * Update Purple Dot
+ */
+
+$("update").addEventListener(
+  "click",
+  async () => {
+
+    if (
+      !datesValid() ||
+      !lookup ||
+      !lookup.matched ||
+      !lookup.matched.length
+    ) {
+      return;
+    }
+
+    const confirmed =
+      confirm(
+        `Update ${lookup.matched.length} matched waitlists?\n\n` +
+        `${formatDate($("earliest").value)} → ` +
+        `${formatDate($("latest").value)}`
+      );
+
+    if (!confirmed) {
+      return;
+    }
+
+    $("update").disabled = true;
+
+    setStatus(
+      "Starting Purple Dot update…"
+    );
+
+    try {
+
+      const branch =
+        $("branch").value.trim() ||
+        "main";
+
+      const payload =
+        JSON.stringify({
+          skus:
+            lookup.matched.map(
+              x => x.sku
+            ),
+
+          earliest_ship_date:
+            $("earliest").value,
+
+          latest_ship_date:
+            $("latest").value
+        });
+
+      await githubRequest(
+        "/actions/workflows/purple-dot-update.yml/dispatches",
+        {
+          method: "POST",
+
+          headers: {
+            "Content-Type":
+              "application/json"
+          },
+
+          body: JSON.stringify({
+            ref: branch,
+
+            inputs: {
+              payload
+            }
+          })
+        }
+      );
+
+      setStatus(
+        "Update workflow started successfully.\n\n" +
+        "GitHub Actions is now updating the matched Purple Dot waitlists.",
+        "ok"
+      );
+
+    } catch (error) {
+
+      setStatus(
+        error.message,
+        "bad"
+      );
+
+      $("update").disabled =
+        false;
+    }
+  }
+);

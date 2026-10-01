@@ -1,214 +1,339 @@
 const token = process.env.PURPLE_DOT_ACCESS_TOKEN;
-const requestedSkus = [...new Set(
-  (process.env.SKUS || "")
-    .split(/\r?\n/)
-    .map(s => s.trim())
-    .filter(Boolean)
-)];
+
+const requestedSkus = [
+    ...new Set(
+        (process.env.SKUS || "")
+            .split(/\r?\n/)
+            .map(s => s.trim())
+            .filter(Boolean)
+    )
+];
 
 if (!token) {
-  throw new Error("Missing PURPLE_DOT_ACCESS_TOKEN");
+    throw new Error("Missing PURPLE_DOT_ACCESS_TOKEN");
 }
 
 if (!requestedSkus.length) {
-  throw new Error("No SKUs supplied");
+    throw new Error("No SKUs supplied");
 }
 
-const base =
-  "https://www.purpledotprice.com/admin/api/v1/waitlists";
-
 const wanted = new Set(requestedSkus);
+
+const BASE_URL =
+    "https://www.purpledotprice.com/admin/api/v1/waitlists";
+
 const matches = new Map();
 
 async function getPage(cursor) {
-  const url = new URL(base);
 
-  url.searchParams.set("limit", "100");
+    const url = new URL(BASE_URL);
 
-  if (cursor) {
-    url.searchParams.set("starting_after", cursor);
-  }
+    url.searchParams.set("limit", "100");
 
-  console.log(
-    `Searching Purple Dot${cursor ? ` after ${cursor}` : ""}...`
-  );
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 30000);
-
-  try {
-    const response = await fetch(url, {
-      signal: controller.signal,
-      headers: {
-        "X-Purple-Dot-Access-Token": token,
-        "Accept": "application/json"
-      }
-    });
-
-    const text = await response.text();
-
-    if (!response.ok) {
-      throw new Error(
-        `Purple Dot returned ${response.status}: ${text}`
-      );
+    if (cursor) {
+        url.searchParams.set(
+            "starting_after",
+            cursor
+        );
     }
 
-    return JSON.parse(text);
+    const controller =
+        new AbortController();
 
-  } finally {
-    clearTimeout(timeout);
-  }
+    const timeout =
+        setTimeout(
+            () => controller.abort(),
+            30000
+        );
+
+    try {
+
+        const response =
+            await fetch(url, {
+                signal: controller.signal,
+
+                headers: {
+                    "X-Purple-Dot-Access-Token":
+                        token,
+
+                    "Accept":
+                        "application/json"
+                }
+            });
+
+        const text =
+            await response.text();
+
+        if (!response.ok) {
+
+            throw new Error(
+                `Purple Dot ${response.status}: ${text}`
+            );
+        }
+
+        return JSON.parse(text);
+
+    } finally {
+
+        clearTimeout(timeout);
+    }
 }
 
 let cursor = null;
 let page = 0;
-let hasMore = true;
 
-while (hasMore) {
-  page++;
+while (true) {
 
-  console.log(`Checking page ${page}...`);
+    page++;
 
-  const response = await getPage(cursor);
-  const data = response.data || response;
-
-  const waitlists = data.waitlists || [];
-
-  for (const waitlist of waitlists) {
-
-    const variants =
-      waitlist.availability?.variants || [];
-
-    for (const variant of variants) {
-
-      if (!variant.sku) continue;
-
-      if (!wanted.has(variant.sku)) continue;
-
-      if (!matches.has(variant.sku)) {
-        matches.set(variant.sku, []);
-      }
-
-      matches.get(variant.sku).push({
-        waitlist: waitlist,
-        variant: variant
-      });
-    }
-  }
-
-  console.log(
-    `Page ${page}: ${waitlists.length} waitlists. ` +
-    `${matches.size}/${wanted.size} requested SKUs found.`
-  );
-
-  /*
-   * Important optimisation:
-   * Once every requested SKU has been found,
-   * there is no reason to download the remaining
-   * Purple Dot waitlists.
-   */
-
-  if (matches.size >= wanted.size) {
-    console.log("All requested SKUs found.");
-    break;
-  }
-
-  hasMore = Boolean(data.has_more);
-
-  cursor = data.starting_after || null;
-
-  if (hasMore && !cursor) {
-    throw new Error(
-      "Purple Dot reported more pages but did not provide a cursor."
+    console.log(
+        `Checking Purple Dot page ${page}...`
     );
-  }
+
+    const response =
+        await getPage(cursor);
+
+    const data =
+        response.data || response;
+
+    const waitlists =
+        data.waitlists || [];
+
+    for (const waitlist of waitlists) {
+
+        /*
+         * Collect ALL SKU occurrences.
+         *
+         * A SKU can legitimately belong to
+         * more than one waitlist.
+         */
+
+        const variants =
+            waitlist.availability?.variants || [];
+
+        for (const variant of variants) {
+
+            const sku =
+                variant.sku?.trim();
+
+            if (!sku || !wanted.has(sku)) {
+                continue;
+            }
+
+            if (!matches.has(sku)) {
+                matches.set(sku, []);
+            }
+
+            /*
+             * Deduplicate by actual waitlist ID.
+             */
+
+            const existing =
+                matches
+                    .get(sku)
+                    .some(
+                        item =>
+                            item.waitlist_id ===
+                            waitlist.id
+                    );
+
+            if (!existing) {
+
+                matches.get(sku).push({
+
+                    sku,
+
+                    waitlist_id:
+                        waitlist.id,
+
+                    waitlist
+                });
+            }
+        }
+    }
+
+    console.log(
+        `Page ${page}: ` +
+        `${waitlists.length} waitlists`
+    );
+
+    const foundAll =
+        requestedSkus.every(
+            sku =>
+                matches.has(sku)
+        );
+
+    /*
+     * We can stop once every requested SKU has
+     * at least one waitlist.
+     *
+     * If a SKU has multiple waitlists we keep
+     * all of the ones encountered.
+     */
+
+    if (foundAll) {
+        console.log(
+            "All requested SKUs found."
+        );
+
+        break;
+    }
+
+    const hasMore =
+        Boolean(data.has_more);
+
+    if (!hasMore) {
+        break;
+    }
+
+    cursor =
+        data.starting_after || null;
+
+    if (!cursor) {
+
+        throw new Error(
+            "Purple Dot reported more pages " +
+            "but did not provide a cursor."
+        );
+    }
 }
+
+
+/*
+ * Build result.
+ */
 
 const results = [];
 const matched = [];
 
 for (const sku of requestedSkus) {
 
-  const found = matches.get(sku) || [];
+    const found =
+        matches.get(sku) || [];
 
-  if (found.length === 0) {
+    if (!found.length) {
+
+        results.push({
+            sku,
+            status: "NOT_FOUND",
+            waitlists: []
+        });
+
+        continue;
+    }
+
+    const waitlists =
+        found.map(item => {
+
+            const waitlist =
+                item.waitlist;
+
+            return {
+
+                sku,
+
+                waitlist_id:
+                    item.waitlist_id,
+
+                earliest_ship_date:
+                    waitlist.earliest_ship_date ||
+                    null,
+
+                latest_ship_date:
+                    waitlist.latest_ship_date ||
+                    null,
+
+                state:
+                    waitlist.state ||
+                    null,
+
+                title:
+                    waitlist.availability?.product?.title ||
+                    null
+            };
+        });
 
     results.push({
-      sku,
-      status: "NOT_FOUND"
+
+        sku,
+
+        status: "MATCHED",
+
+        waitlist_count:
+            waitlists.length,
+
+        waitlists
     });
 
-    continue;
-  }
+    for (const waitlist of waitlists) {
 
-  if (found.length > 1) {
-
-    results.push({
-      sku,
-      status: "AMBIGUOUS",
-      waitlist_ids: found.map(x => x.waitlist.id)
-    });
-
-    continue;
-  }
-
-  const { waitlist } = found[0];
-
-  const result = {
-    sku,
-    status: "MATCHED",
-    waitlist_id: waitlist.id,
-    product_id:
-      waitlist.availability?.product?.product_id || null,
-    earliest_ship_date:
-      waitlist.earliest_ship_date || null,
-    latest_ship_date:
-      waitlist.latest_ship_date || null,
-    state:
-      waitlist.state || null
-  };
-
-  matched.push({
-    sku,
-    waitlist_id: waitlist.id,
-    product_id:
-      waitlist.availability?.product?.product_id || null
-  });
-
-  results.push(result);
+        matched.push(waitlist);
+    }
 }
 
+
 const output = {
-  requested_count: requestedSkus.length,
-  matched_count: matched.length,
 
-  not_found_count:
-    results.filter(x => x.status === "NOT_FOUND").length,
+    requested_count:
+        requestedSkus.length,
 
-  ambiguous_count:
-    results.filter(x => x.status === "AMBIGUOUS").length,
+    matched_count:
+        matched.length,
 
-  matched,
+    not_found_count:
+        results.filter(
+            x =>
+                x.status === "NOT_FOUND"
+        ).length,
 
-  results
+    results,
+
+    matched
 };
 
-console.log("");
-console.log("========== LOOKUP COMPLETE ==========");
-console.log(`Requested: ${requestedSkus.length}`);
-console.log(`Matched: ${output.matched_count}`);
-console.log(`Not found: ${output.not_found_count}`);
-console.log(`Ambiguous: ${output.ambiguous_count}`);
-console.log("======================================");
 
+console.log("");
 console.log(
-  "RESULT_JSON=" +
-  JSON.stringify(output)
+    "========== LOOKUP COMPLETE =========="
 );
 
-const fs = await import("node:fs");
+console.log(
+    `Requested SKUs: ${requestedSkus.length}`
+);
+
+console.log(
+    `Waitlists found: ${matched.length}`
+);
+
+console.log(
+    `SKUs not found: ${output.not_found_count}`
+);
+
+console.log(
+    "======================================"
+);
+
+
+/*
+ * IMPORTANT:
+ *
+ * The frontend reads RESULT_JSON from the logs.
+ */
+
+console.log(
+    "RESULT_JSON=" +
+    JSON.stringify(output)
+);
+
+
+const fs =
+    await import("node:fs");
 
 fs.writeFileSync(
-  "lookup-result.json",
-  JSON.stringify(output, null, 2)
+    "lookup-result.json",
+    JSON.stringify(
+        output,
+        null,
+        2
+    )
 );

@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Purple Dot • Waitlist Manager</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="orb orb-one"></div><div class="orb orb-two"></div>
+
+  <main class="shell">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark">PD</div>
+        <div><strong>Purple Dot</strong><span>Waitlist Manager</span></div>
+      </div>
+      <div class="secure-pill"><span>●</span> GitHub-secured</div>
+    </header>
+
+    <section class="hero">
+      <div>
+        <div class="eyebrow">BULK WAITLIST EDITOR</div>
+        <h1>Update ship dates<br><em>without the repetitive work.</em></h1>
+        <p>Paste your SKUs, review the current Purple Dot dates, choose the new dates, and update the whole batch in one go.</p>
+      </div>
+      <div class="hero-card">
+        <div class="hero-number">01</div>
+        <div><strong>Review first</strong><span>Nothing is changed until you confirm the batch.</span></div>
+      </div>
+    </section>
+
+    <section class="card setup">
+      <div class="section-title"><span class="step">01</span><div><h2>GitHub connection</h2><p>Used to securely run the updater.</p></div></div>
+      <div class="fields three">
+        <label>GitHub owner<input id="repoOwner" placeholder="your-username"></label>
+        <label>Repository<input id="repoName" placeholder="purple-dot-waitlist-updater"></label>
+        <label>Branch<input id="branch" value="main"></label>
+      </div>
+      <label>GitHub token<input id="githubToken" type="password" autocomplete="off" placeholder="github_pat_••••••••"></label>
+      <div class="hint">Use a fine-grained token restricted to this repository with <b>Actions: Read and write</b>. It is used by this page only to trigger/read the GitHub workflow.</div>
+    </section>
+
+    <section class="card">
+      <div class="section-title"><span class="step">02</span><div><h2>Choose waitlists</h2><p>Paste one SKU per line, or use commas, tabs or semicolons.</p></div></div>
+      <textarea id="skus" rows="8" placeholder="HOR-R1234
+HOR-R5678
+DAP-12345
+OXD-76TR016"></textarea>
+      <div class="toolbar">
+        <span id="skuCount">0 SKUs</span>
+        <button id="find" class="primary">Find waitlists <span>→</span></button>
+      </div>
+    </section>
+
+    <section id="reviewCard" class="card hidden">
+      <div class="section-title"><span class="step">03</span><div><h2>Review current dates</h2><p>Check exactly what Purple Dot found before making changes.</p></div></div>
+      <div id="lookupState" class="loading"><span class="spinner"></span> Finding waitlists…</div>
+      <div id="reviewTable"></div>
+    </section>
+
+    <section id="datesCard" class="card hidden">
+      <div class="section-title"><span class="step">04</span><div><h2>Set new dates</h2><p>These dates will be applied to every selected waitlist.</p></div></div>
+      <div class="fields two">
+        <label>Earliest ship date<input id="earliest" type="date"></label>
+        <label>Latest ship date<input id="latest" type="date"></label>
+      </div>
+      <div class="date-preview">
+        <div><span>New earliest</span><strong id="earliestPreview">—</strong></div>
+        <div class="arrow">→</div>
+        <div><span>New latest</span><strong id="latestPreview">—</strong></div>
+      </div>
+      <div class="warning"><b>Final check</b><span>Only matched waitlists will be updated. Not found and ambiguous SKUs will be skipped.</span></div>
+      <button id="update" class="primary big" disabled>Update selected waitlists <span>→</span></button>
+      <div id="status" class="status"></div>
+    </section>
+
+    <footer>
+      <span>Purple Dot API runs inside GitHub Actions.</span>
+      <a href="https://docs.getpurpledot.com/docs/purple-dot-apis/private-api/waitlists" target="_blank" rel="noreferrer">API documentation ↗</a>
+    </footer>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>
